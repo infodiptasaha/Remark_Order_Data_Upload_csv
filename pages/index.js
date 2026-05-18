@@ -593,20 +593,47 @@ export default function Home() {
             </div>
             {statsErr && <div className="alert err"><div className="alert-t">❌ Error</div><div className="alert-b">{statsErr}</div></div>}
             {stats && (
-              <div className="g4">
-                {[
-                  {icon:'📋',label:'Total Rows', val:stats.totalDocs?.toLocaleString()},
-                  {icon:'💾',label:'Data Size',  val:stats.dataSize},
-                  {icon:'📅',label:'Oldest Date',val:stats.oldestDate},
-                  {icon:'🆕',label:'Newest Date',val:stats.newestDate},
-                ].map(s=>(
-                  <div className="stat-card" key={s.label}>
-                    <div className="stat-icon">{s.icon}</div>
-                    <div className="stat-lbl">{s.label}</div>
-                    <div className="stat-val">{s.val}</div>
+              <>
+                <div className="g4" style={{marginBottom:'16px'}}>
+                  {[
+                    {icon:'📋',label:'Total Rows', val:stats.totalDocs?.toLocaleString()},
+                    {icon:'💾',label:'Data Size',  val:stats.dataSize},
+                    {icon:'📅',label:'Oldest Date',val:stats.oldestDate},
+                    {icon:'🆕',label:'Newest Date',val:stats.newestDate},
+                  ].map(s=>(
+                    <div className="stat-card" key={s.label}>
+                      <div className="stat-icon">{s.icon}</div>
+                      <div className="stat-lbl">{s.label}</div>
+                      <div className="stat-val">{s.val}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Available Dates */}
+                {stats.availableDates?.length > 0 && (
+                  <div className="card">
+                    <div className="card-head">
+                      Available Dates — {stats.availableDates.length} দিনের data আছে
+                      <span style={{marginLeft:'auto',color:'var(--cyan)',fontSize:'.65rem'}}>
+                        field: {stats.dateField}
+                      </span>
+                    </div>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:'8px'}}>
+                      {stats.availableDates.map(d=>(
+                        <div key={d} style={{
+                          background:'rgba(0,229,255,.07)',
+                          border:'1px solid rgba(0,229,255,.18)',
+                          borderRadius:'7px', padding:'5px 12px',
+                          fontFamily:'Space Mono,monospace', fontSize:'.72rem',
+                          color:'var(--cyan)', whiteSpace:'nowrap'
+                        }}>
+                          📅 {d}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </>}
 
