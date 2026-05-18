@@ -1,6 +1,5 @@
 import clientPromise from '../../lib/mongodb'
 
-// Parse "15-May-26" → Date object for sorting
 function parseOrderDate(str) {
   if (!str) return null
   const months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11}
@@ -12,10 +11,7 @@ function parseOrderDate(str) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
-  }
-
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   const { collection } = req.body
   if (!collection) return res.status(400).json({ error: 'collection required' })
 
@@ -26,22 +22,35 @@ export default async function handler(req, res) {
 
     const totalDocs = await col.countDocuments()
 
-    // Get all unique OrderDates and find oldest/newest by parsing
-    const allDates = await col
-      .distinct('OrderDate', { OrderDate: { $exists: true, $ne: null } })
+    // ORDER_DATA uses OrderDate, others use _uploadDate
+    const isOrderData = collection === 'ORDER_DATA'
+    const dateField = isOrderData ? 'OrderDate' : '_uploadDate'
+
+    // Get all unique dates
+    const allDates = await col.distinct(dateField, { [dateField]: { $exists: true, $ne: null } })
 
     let oldestDate = 'N/A'
     let newestDate = 'N/A'
+    let availableDates = []
 
     if (allDates.length > 0) {
-      const sorted = allDates
-        .map(d => ({ raw: d, parsed: parseOrderDate(d) }))
-        .filter(d => d.parsed !== null)
-        .sort((a, b) => a.parsed - b.parsed)
-
-      if (sorted.length > 0) {
-        oldestDate = sorted[0].raw
-        newestDate = sorted[sorted.length - 1].raw
+      if (isOrderData) {
+        // Parse "17-May-26" format
+        const sorted = allDates
+          .map(d => ({ raw: d, parsed: parseOrderDate(d) }))
+          .filter(d => d.parsed !== null)
+          .sort((a, b) => a.parsed - b.parsed)
+        if (sorted.length > 0) {
+          oldestDate = sorted[0].raw
+          newestDate = sorted[sorted.length - 1].raw
+          availableDates = sorted.map(d => d.raw)
+        }
+      } else {
+        // ISO date "2026-05-18" format — simple sort
+        const sorted = [...allDates].sort()
+        oldestDate = sorted[0]
+        newestDate = sorted[sorted.length - 1]
+        availableDates = sorted
       }
     }
 
@@ -50,20 +59,16 @@ export default async function handler(req, res) {
     try {
       const cStats = await db.command({ collStats: collection, scale: 1 })
       const bytes = cStats.storageSize || cStats.size || 0
-      if (bytes >= 1024 * 1024) {
-        displaySize = `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-      } else if (bytes >= 1024) {
-        displaySize = `${(bytes / 1024).toFixed(1)} KB`
-      } else {
-        displaySize = `${bytes} B`
-      }
+      displaySize = bytes >= 1024*1024
+        ? `${(bytes/(1024*1024)).toFixed(2)} MB`
+        : bytes >= 1024
+          ? `${(bytes/1024).toFixed(1)} KB`
+          : `${bytes} B`
     } catch {
-      const estimatedBytes = totalDocs * 500
-      if (estimatedBytes >= 1024 * 1024) {
-        displaySize = `~${(estimatedBytes / (1024 * 1024)).toFixed(2)} MB`
-      } else {
-        displaySize = `~${(estimatedBytes / 1024).toFixed(1)} KB`
-      }
+      const est = totalDocs * 500
+      displaySize = est >= 1024*1024
+        ? `~${(est/(1024*1024)).toFixed(2)} MB`
+        : `~${(est/1024).toFixed(1)} KB`
     }
 
     return res.status(200).json({
@@ -71,7 +76,9 @@ export default async function handler(req, res) {
       totalDocs,
       oldestDate,
       newestDate,
+      availableDates,
       dataSize: displaySize,
+      dateField,
     })
   } catch (err) {
     console.error('Stats error:', err)
