@@ -221,12 +221,19 @@ export default function Home() {
         })
         const json = await res.json()
         if (!res.ok) { addLog(`Batch ${i+1} failed: ${json.error}`, 'err'); failed += batches[i].length }
-        else { addLog(`Batch ${i+1} ✓ — ${json.insertedCount} rows`, 'ok'); inserted += json.insertedCount }
-      } catch (e) { addLog(`Batch ${i+1} error: ${e.message}`, 'err'); failed += batches[i].length }
+        else {
+          inserted += json.insertedCount
+          if (json.duplicateCount > 0) {
+            addLog(`Batch ${i+1} ✓ — ${json.insertedCount} inserted · ⚠️ ${json.duplicateCount} duplicate skipped`, 'ok')
+          } else {
+            addLog(`Batch ${i+1} ✓ — ${json.insertedCount} rows inserted`, 'ok')
+          }
+        }      } catch (e) { addLog(`Batch ${i+1} error: ${e.message}`, 'err'); failed += batches[i].length }
     }
     setProgress(100); setBusy(false)
+    const totalDup = batches.reduce((acc, b, i) => acc, 0) // placeholder
     setResult(failed === 0
-      ? { ok: true,  title: `✅ ${inserted.toLocaleString()} rows inserted`, body: `Collection: "${collection}" · ${batches.length} batch(es)` }
+      ? { ok: true,  title: `✅ ${inserted.toLocaleString()} rows inserted`, body: `Collection: "${collection}" · ${batches.length} batch(es) · duplicate গুলো skip হয়েছে` }
       : { ok: false, title: `⚠️ ${inserted} ok · ${failed} failed`, body: 'Log দেখো details এর জন্য' })
   }
 
