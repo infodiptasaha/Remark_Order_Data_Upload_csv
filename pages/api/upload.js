@@ -6,6 +6,7 @@ export const config = {
 
 // Unique key config per collection
 const UNIQUE_KEYS = {
+  ORDER_DATA:       doc => `${doc['Town Code']}__${doc['OrderDate']}__${doc['Outlet Code']}__${doc['SKU Code']}__${doc['Order Gross Value(TP)']}`,
   SO_Data:          doc => `${doc['SRCode']}__${doc['ContactNo']}`,
   PJP_Data:         doc => `${doc['Code']}__${doc['RouteCode']}`,
   Target_Data_Town: doc => `${doc['DistributorCode']}__${doc['Town']}`,
@@ -27,28 +28,26 @@ export default async function handler(req, res) {
     const uploadDate = new Date().toISOString().split('T')[0] // "2026-05-18"
     const docsWithDate = documents.map(doc => ({ ...doc, _uploadDate: uploadDate }))
 
-    // ORDER_DATA — simple insertMany, no duplicate check
-    if (collection === 'ORDER_DATA') {
-      const result = await col.insertMany(docsWithDate, { ordered: false })
-      return res.status(200).json({
-        success: true,
-        insertedCount: result.insertedCount,
-        duplicateCount: 0,
-        skippedCount: 0,
-      })
-    }
-
-    // SO_Data, PJP_Data, Target_Data_Town — duplicate check
+    // All collections — duplicate check
     const keyFn = UNIQUE_KEYS[collection]
     if (!keyFn) return res.status(400).json({ error: `Unknown collection: ${collection}` })
 
-    // Build unique keys for incoming docs
     const incomingKeys = docsWithDate.map(doc => keyFn(doc))
-
-    // Find existing docs with matching keys in DB
     let existingKeys = new Set()
 
-    if (collection === 'SO_Data') {
+    if (collection === 'ORDER_DATA') {
+      // Query by Town Code + OrderDate combination (most selective filter)
+      const townCodes   = [...new Set(docsWithDate.map(d => d['Town Code']).filter(Boolean))]
+      const orderDates  = [...new Set(docsWithDate.map(d => d['OrderDate']).filter(Boolean))]
+      const existing = await col.find(
+        { 'Town Code': { $in: townCodes }, 'OrderDate': { $in: orderDates } },
+        { projection: { 'Town Code':1, 'OrderDate':1, 'Outlet Code':1, 'SKU Code':1, 'Order Gross Value(TP)':1, _id:0 } }
+      ).toArray()
+      existing.forEach(d => existingKeys.add(
+        `${d['Town Code']}__${d['OrderDate']}__${d['Outlet Code']}__${d['SKU Code']}__${d['Order Gross Value(TP)']}`
+      ))
+    }
+    else if (collection === 'SO_Data') {
       const existing = await col.find(
         { SRCode: { $in: docsWithDate.map(d => d['SRCode']).filter(Boolean) } },
         { projection: { SRCode: 1, ContactNo: 1, _id: 0 } }
