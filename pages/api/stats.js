@@ -1,13 +1,26 @@
 import clientPromise from '../../lib/mongodb'
 
+// Parse "14 May 2026" → Date object
 function parseOrderDate(str) {
   if (!str) return null
-  const months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11}
-  const parts = str.split('-')
-  if (parts.length !== 3) return null
-  const [day, mon, yr] = parts
-  const fullYear = 2000 + parseInt(yr, 10)
-  return new Date(fullYear, months[mon], parseInt(day, 10))
+  const months = {
+    'January':0,'February':1,'March':2,'April':3,'May':4,'June':5,
+    'July':6,'August':7,'September':8,'October':9,'November':10,'December':11,
+    'Jan':0,'Feb':1,'Mar':2,'Apr':3,'Jun':5,'Jul':6,'Aug':7,'Sep':8,'Oct':9,'Nov':10,'Dec':11
+  }
+  // Handle "14 May 2026"
+  const m1 = str.match(/^(\d{1,2})\s+(\w+)\s+(\d{4})$/)
+  if (m1) {
+    const [,day,mon,year] = m1
+    return new Date(parseInt(year), months[mon] ?? 0, parseInt(day))
+  }
+  // Handle "14-May-26"
+  const m2 = str.match(/^(\d{1,2})-(\w+)-(\d{2})$/)
+  if (m2) {
+    const [,day,mon,yr] = m2
+    return new Date(2000+parseInt(yr), months[mon] ?? 0, parseInt(day))
+  }
+  return null
 }
 
 export default async function handler(req, res) {
@@ -22,11 +35,9 @@ export default async function handler(req, res) {
 
     const totalDocs = await col.countDocuments()
 
-    // ORDER_DATA uses OrderDate, others use _uploadDate
     const isOrderData = collection === 'ORDER_DATA'
     const dateField = isOrderData ? 'OrderDate' : '_uploadDate'
 
-    // Get all unique dates
     const allDates = await col.distinct(dateField, { [dateField]: { $exists: true, $ne: null } })
 
     let oldestDate = 'N/A'
@@ -35,7 +46,6 @@ export default async function handler(req, res) {
 
     if (allDates.length > 0) {
       if (isOrderData) {
-        // Parse "17-May-26" format
         const sorted = allDates
           .map(d => ({ raw: d, parsed: parseOrderDate(d) }))
           .filter(d => d.parsed !== null)
@@ -46,7 +56,6 @@ export default async function handler(req, res) {
           availableDates = sorted.map(d => d.raw)
         }
       } else {
-        // ISO date "2026-05-18" format — simple sort
         const sorted = [...allDates].sort()
         oldestDate = sorted[0]
         newestDate = sorted[sorted.length - 1]
@@ -72,13 +81,8 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({
-      success: true,
-      totalDocs,
-      oldestDate,
-      newestDate,
-      availableDates,
-      dataSize: displaySize,
-      dateField,
+      success: true, totalDocs, oldestDate, newestDate,
+      availableDates, dataSize: displaySize, dateField,
     })
   } catch (err) {
     console.error('Stats error:', err)
