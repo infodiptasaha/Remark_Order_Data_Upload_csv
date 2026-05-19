@@ -1,13 +1,20 @@
 import clientPromise from '../../lib/mongodb'
 
-// Convert date picker "2026-05-15" → "15-May-26" for ORDER_DATA
+// Convert "2026-05-14" → "14 May 2026"
 function toOrderDateFormat(dateStr) {
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const months = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December']
+  const shortMonths = ['Jan','Feb','Mar','Apr','May','Jun',
+                       'Jul','Aug','Sep','Oct','Nov','Dec']
   const [year, month, day] = dateStr.split('-')
-  const mm = months[parseInt(month, 10) - 1]
-  const yy = year.slice(2)
-  const dd = parseInt(day, 10).toString()
-  return `${dd}-${mm}-${yy}`
+  const monthIdx = parseInt(month, 10) - 1
+  const dd = parseInt(day, 10)
+  // Try both formats
+  return {
+    full:  `${dd} ${months[monthIdx]} ${year}`,      // "14 May 2026"
+    short: `${dd}-${shortMonths[monthIdx]}-${year.slice(2)}`, // "14-May-26"
+    iso:   dateStr,                                    // "2026-05-14"
+  }
 }
 
 export default async function handler(req, res) {
@@ -21,20 +28,25 @@ export default async function handler(req, res) {
     const db = client.db(process.env.MONGODB_DB)
     const col = db.collection(collection)
 
-    let query = {}
+    let result
     let matchedFormat = ''
 
     if (collection === 'ORDER_DATA') {
-      // OrderDate format: "17-May-26"
-      matchedFormat = toOrderDateFormat(date)
-      query = { OrderDate: matchedFormat }
+      const formats = toOrderDateFormat(date)
+      // Try all possible formats with $or
+      result = await col.deleteMany({
+        $or: [
+          { OrderDate: formats.full },   // "14 May 2026"
+          { OrderDate: formats.short },  // "14-May-26"
+          { OrderDate: formats.iso },    // "2026-05-14"
+          { OrderDate: { $regex: `^${parseInt(date.split('-')[2])} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(date.split('-')[1])-1]}` } },
+        ]
+      })
+      matchedFormat = formats.full
     } else {
-      // SO_Data, PJP_Data, Target_Data_Town use _uploadDate: "2026-05-18"
+      result = await col.deleteMany({ _uploadDate: date })
       matchedFormat = date
-      query = { _uploadDate: date }
     }
-
-    const result = await col.deleteMany(query)
 
     return res.status(200).json({
       success: true,
