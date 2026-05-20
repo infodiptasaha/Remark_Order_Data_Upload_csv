@@ -33,14 +33,14 @@ export default async function handler(req, res) {
 
     if (collection === 'ORDER_DATA') {
       const formats = toOrderDateFormat(date)
-      // Use regex to handle any invisible chars/spaces
-      const dayNum = parseInt(date.split('-')[2], 10)
+      const [year, month, day] = date.split('-')
       const monName = formats.full.split(' ')[1] // "May"
-      const yearNum = date.split('-')[0]           // "2026"
+      const dayInt  = parseInt(day, 10)           // 6 or 16
+      // Match "6 May 2026" OR "06 May 2026" — case insensitive, trimmed
       result = await col.deleteMany({
-        OrderDate: { $regex: `^\\s*${dayNum}\\s+${monName}\\s+${yearNum}\\s*$`, $options: 'i' }
+        OrderDate: { $regex: `^\\s*0?${dayInt}\\s+${monName}\\s+${year}\\s*$`, $options: 'i' }
       })
-      matchedFormat = formats.full
+      matchedFormat = `${dayInt} ${monName} ${year}`
     } else {
       result = await col.deleteMany({ _uploadDate: date })
       matchedFormat = date
